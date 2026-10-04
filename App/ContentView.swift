@@ -97,9 +97,9 @@ struct ContentView: View {
                         }
                     }
 
-                    // Danh sách đã kích hoạt / khác
+                    // Danh sách tài khoản còn lại
                     let activeList = accounts.filter { $0.payment_status != "UNPAID" }
-                    Section(header: Text("Tài khoản đang hoạt động (\(activeList.count))")) {
+                    Section(header: Text("Tài khoản hệ thống (\(activeList.count))")) {
                         ForEach(activeList) { acc in
                             AccountRow(account: acc)
                                 .contentShape(Rectangle())
@@ -159,7 +159,8 @@ struct ContentView: View {
                     return
                 }
 
-                if let res = try? JSONDecoder().decode(SheetResponse, from: data), res.success, let list = res.data {
+                // Sửa thành SheetResponse.self để tránh lỗi compile exit code 65
+                if let res = try? JSONDecoder().decode(SheetResponse.self, from: data), res.success, let list = res.data {
                     self.detectNewUnpaidOrders(newList: list)
                     self.accounts = list
                     self.statusText = "Cập nhật lúc: \(Date().formatted(date: .omitted, time: .standard))"
@@ -176,10 +177,9 @@ struct ContentView: View {
 
         for item in newList {
             let oldPayment = previousState[item.phone]
-            // Khi có đơn mua mới: Payment_Status = UNPAID (mà trước đó chưa có hoặc là PAID)
+            // Báo động khi đơn chuyển sang UNPAID
             if item.payment_status == "UNPAID" && (oldPayment != "UNPAID") {
                 triggerOrderAlert(account: item)
-                // Mở ngay màn hình chi tiết của khách này lên cho bạn xử lý
                 self.selectedAccount = item
             }
             previousState[item.phone] = item.payment_status
@@ -195,7 +195,6 @@ struct ContentView: View {
         let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
 
-        // Phát chuông rung cảnh báo khẩn cấp
         AudioServicesPlayAlertSound(1005)
     }
 }
@@ -265,7 +264,6 @@ struct AccountDetailView: View {
     var body: some View {
         NavigationView {
             Form {
-                // Khối kích hoạt nhanh nếu đang UNPAID
                 if account.payment_status == "UNPAID" {
                     Section {
                         VStack(spacing: 8) {
@@ -360,7 +358,6 @@ struct AccountDetailView: View {
         }
     }
 
-    // 1-Chạm kích hoạt
     func quickActivate() {
         account.payment_status = "PAID"
         account.status = "ACTIVE"
