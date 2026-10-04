@@ -46,7 +46,7 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 
-// MARK: - Bộ Giữ App Chạy Ngầm Bằng Audio (Background Keeper)
+// MARK: - Quản Lý Audio Giữ Chạy Ngầm
 class BackgroundAudioManager: ObservableObject {
     static let shared = BackgroundAudioManager()
     private var silentPlayer: AVAudioPlayer?
@@ -56,11 +56,10 @@ class BackgroundAudioManager: ObservableObject {
             try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             try AVAudioSession.sharedInstance().setActive(true)
 
-            // Tạo đoạn âm thanh trống 1 giây bằng mã hóa PCM (không cần file âm thanh ngoài)
             let silentData = createSilentAudioWav()
             silentPlayer = try AVAudioPlayer(data: silentData)
-            silentPlayer?.numberOfLoops = -1 // Lặp lại vô tận
-            silentPlayer?.volume = 0.01      // Mức âm lượng gần như bằng 0
+            silentPlayer?.numberOfLoops = -1
+            silentPlayer?.volume = 0.01
             silentPlayer?.prepareToPlay()
             silentPlayer?.play()
         } catch {
@@ -73,7 +72,6 @@ class BackgroundAudioManager: ObservableObject {
         silentPlayer = nil
     }
 
-    // Tự sinh một file WAV PCM im lặng trực tiếp từ bộ nhớ
     private func createSilentAudioWav() -> Data {
         let sampleRate: Int32 = 44100
         let channels: Int16 = 1
@@ -103,14 +101,12 @@ class BackgroundAudioManager: ObservableObject {
         data.append(withUnsafeBytes(of: bitsPerSample.littleEndian) { Data($0) })
         data.append("data".data(using: .utf8)!)
         data.append(withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
-
-        // Ghi các mẫu 0 (im lặng)
         data.append(contentsOf: [UInt8](repeating: 0, count: Int(dataSize)))
         return data
     }
 }
 
-// MARK: - Palette Màu Chuẩn Doanh Nghiệp
+// MARK: - Bảng Màu Hiện Đại
 extension Color {
     static let appBackground = Color(red: 0.96, green: 0.97, blue: 0.98)
     static let cardBackground = Color.white
@@ -270,7 +266,6 @@ struct ContentView: View {
 
     func startPolling() {
         stopPolling()
-        // Kích hoạt phát ngầm để iOS không bao giờ đóng băng app
         BackgroundAudioManager.shared.activateBackgroundMode()
         
         fetchData()
@@ -332,7 +327,6 @@ struct ContentView: View {
         let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
 
-        // Rung và phát chuông cảnh báo
         AudioServicesPlayAlertSound(1005)
     }
 }
