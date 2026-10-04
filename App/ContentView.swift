@@ -31,7 +31,7 @@ struct SheetAdminApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .preferredColorScheme(.light) // Ép ứng dụng luôn ở chế độ Sáng (Chữ đen, nền sáng)
+                .preferredColorScheme(.light)
         }
     }
 }
@@ -107,21 +107,27 @@ class BackgroundAudioManager: ObservableObject {
     }
 }
 
-// MARK: - Bảng Màu Đen Trắng Rõ Ràng
+// MARK: - Bảng Màu Đen Trắng Rõ Ràng & Màu Trạng Thái
 extension Color {
-    static let appBackground = Color(red: 0.95, green: 0.96, blue: 0.98) // Nền xám nhạt dịu mắt
+    static let appBackground = Color(red: 0.95, green: 0.96, blue: 0.98)
     static let cardBackground = Color.white
-    static let primaryText = Color.black // Ép cứng màu chữ chính thành ĐEN
-    static let secondaryText = Color(red: 0.35, green: 0.40, blue: 0.48) // Màu phụ xám đậm
+    static let primaryText = Color.black
+    static let secondaryText = Color(red: 0.35, green: 0.40, blue: 0.48)
     static let brandBlue = Color(red: 0.12, green: 0.45, blue: 0.95)
     
-    // Status colors
+    // Status Paid / Unpaid
     static let statusPaidBg = Color(red: 0.88, green: 0.97, blue: 0.92)
     static let statusPaidText = Color(red: 0.05, green: 0.45, blue: 0.22)
     static let statusUnpaidBg = Color(red: 0.99, green: 0.92, blue: 0.82)
     static let statusUnpaidText = Color(red: 0.80, green: 0.35, blue: 0.02)
+    
+    // Status Run
     static let statusActiveBg = Color(red: 0.90, green: 0.93, blue: 1.0)
     static let statusActiveText = Color(red: 0.10, green: 0.32, blue: 0.85)
+    
+    // Status Block (Đỏ cảnh báo)
+    static let statusBlockBg = Color(red: 1.0, green: 0.88, blue: 0.88)
+    static let statusBlockText = Color(red: 0.85, green: 0.10, blue: 0.10)
 }
 
 // MARK: - Màn Hình Chính
@@ -131,7 +137,7 @@ struct ContentView: View {
     @State private var accounts: [AccountModel] = []
     @State private var selectedAccount: AccountModel?
     @State private var searchText: String = ""
-    @State private var selectedFilter: String = "ALL"
+    @State private var selectedFilter: String = "ALL" // ALL, UNPAID, ACTIVE, BLOCK
     @State private var isMonitoring: Bool = true
     @State private var checkInterval: Double = 5
     @State private var statusText: String = "Sẵn sàng"
@@ -146,6 +152,7 @@ struct ContentView: View {
             switch selectedFilter {
             case "UNPAID": matchFilter = (acc.payment_status == "UNPAID")
             case "ACTIVE": matchFilter = (acc.status == "ACTIVE" && acc.payment_status == "PAID")
+            case "BLOCK":  matchFilter = (acc.status == "BLOCK")
             default: matchFilter = true
             }
             return matchSearch && matchFilter
@@ -158,7 +165,7 @@ struct ContentView: View {
                 Color.appBackground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // Header tiêu đề tùy chỉnh (chữ đen đậm rõ ràng, không bị chìm)
+                    // Header tiêu đề tùy chỉnh
                     HStack {
                         Text("Quản Lý Bản Quyền")
                             .font(.system(size: 22, weight: .bold))
@@ -217,7 +224,7 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .navigationBarHidden(true) // Ẩn NavigationBar mặc định bị lỗi màu của iOS
+            .navigationBarHidden(true)
             .sheet(item: $selectedAccount) { acc in
                 AccountDetailView(account: acc, webAppUrl: webAppUrl) {
                     fetchData()
@@ -229,7 +236,7 @@ struct ContentView: View {
             }
         }
         .navigationViewStyle(StackNavigationViewStyle())
-        .preferredColorScheme(.light) // Giữ toàn bộ cây View màu đen trên nền trắng
+        .preferredColorScheme(.light)
     }
 
     // KPI Metrics Bar
@@ -238,11 +245,12 @@ struct ContentView: View {
             MetricBox(title: "TỔNG MÁY", value: "\(accounts.count)", color: .primaryText)
             MetricBox(title: "ĐANG CHẠY", value: "\(accounts.filter { $0.status == "ACTIVE" }.count)", color: .statusPaidText)
             MetricBox(title: "CHỜ DUYỆT", value: "\(accounts.filter { $0.payment_status == "UNPAID" }.count)", color: .statusUnpaidText, isAlert: accounts.contains { $0.payment_status == "UNPAID" })
+            MetricBox(title: "BỊ CHẶN", value: "\(accounts.filter { $0.status == "BLOCK" }.count)", color: .statusBlockText)
         }
         .frame(maxWidth: .infinity)
     }
 
-    // Search Section (Chữ đen rõ ràng trên nền trắng)
+    // Search Section
     var searchAndFilterSection: some View {
         VStack(spacing: 8) {
             HStack {
@@ -257,7 +265,7 @@ struct ContentView: View {
                     }
                     TextField("", text: $searchText)
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(Color.black) // Chữ nhập vào luôn là màu đen
+                        .foregroundColor(Color.black)
                 }
 
                 if !searchText.isEmpty {
@@ -275,11 +283,13 @@ struct ContentView: View {
             .shadow(color: Color.black.opacity(0.04), radius: 3, y: 1)
 
             // Chips
-            HStack(spacing: 8) {
-                FilterChip(title: "Tất cả (\(accounts.count))", isSelected: selectedFilter == "ALL") { selectedFilter = "ALL" }
-                FilterChip(title: "Cần duyệt (\(accounts.filter { $0.payment_status == "UNPAID" }.count))", isSelected: selectedFilter == "UNPAID") { selectedFilter = "UNPAID" }
-                FilterChip(title: "Active (\(accounts.filter { $0.status == "ACTIVE" }.count))", isSelected: selectedFilter == "ACTIVE") { selectedFilter = "ACTIVE" }
-                Spacer()
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    FilterChip(title: "Tất cả (\(accounts.count))", isSelected: selectedFilter == "ALL") { selectedFilter = "ALL" }
+                    FilterChip(title: "Cần duyệt (\(accounts.filter { $0.payment_status == "UNPAID" }.count))", isSelected: selectedFilter == "UNPAID") { selectedFilter = "UNPAID" }
+                    FilterChip(title: "Active (\(accounts.filter { $0.status == "ACTIVE" }.count))", isSelected: selectedFilter == "ACTIVE") { selectedFilter = "ACTIVE" }
+                    FilterChip(title: "Bị chặn (\(accounts.filter { $0.status == "BLOCK" }.count))", isSelected: selectedFilter == "BLOCK") { selectedFilter = "BLOCK" }
+                }
             }
             .frame(maxWidth: .infinity)
         }
@@ -357,29 +367,42 @@ struct ContentView: View {
     }
 }
 
-// MARK: - Components (Chữ đen rõ nét)
+// MARK: - Components Thẻ Card
 struct EnterpriseAccountCard: View {
     let account: AccountModel
+
+    var statusColor: (bg: Color, text: Color) {
+        switch account.status {
+        case "ACTIVE":
+            return (Color.statusActiveBg, Color.statusActiveText)
+        case "BLOCK":
+            return (Color.statusBlockBg, Color.statusBlockText)
+        default:
+            return (Color(red: 0.94, green: 0.95, blue: 0.96), Color.secondaryText)
+        }
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .center) {
                 Text(account.phone)
                     .font(.system(size: 17, weight: .bold, design: .monospaced))
-                    .foregroundColor(Color.black) // Chữ SĐT màu đen đậm
+                    .foregroundColor(Color.black)
 
                 Spacer()
 
+                // Tag Thanh Toán
                 StatusBadge(
                     text: account.payment_status,
                     bgColor: account.payment_status == "PAID" ? Color.statusPaidBg : Color.statusUnpaidBg,
                     textColor: account.payment_status == "PAID" ? Color.statusPaidText : Color.statusUnpaidText
                 )
 
+                // Tag Trạng Thái (ACTIVE, BLOCK, PENDING, EXPIRED)
                 StatusBadge(
                     text: account.status,
-                    bgColor: account.status == "ACTIVE" ? Color.statusActiveBg : Color(red: 0.94, green: 0.95, blue: 0.96),
-                    textColor: account.status == "ACTIVE" ? Color.statusActiveText : Color.secondaryText
+                    bgColor: statusColor.bg,
+                    textColor: statusColor.text
                 )
             }
 
@@ -389,7 +412,7 @@ struct EnterpriseAccountCard: View {
                 Label {
                     Text(account.expire_at.isEmpty ? "Vô thời hạn" : account.expire_at)
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color(red: 0.25, green: 0.30, blue: 0.38)) // Màu chữ ngày giờ rõ ràng
+                        .foregroundColor(Color(red: 0.25, green: 0.30, blue: 0.38))
                 } icon: {
                     Image(systemName: "calendar.badge.clock")
                         .font(.system(size: 13))
@@ -401,7 +424,7 @@ struct EnterpriseAccountCard: View {
                 if let amt = Int(account.amount), amt > 0 {
                     Text("\(amt.formatted()) đ")
                         .font(.system(size: 16, weight: .bold, design: .rounded))
-                        .foregroundColor(Color.black) // Tiền màu đen đậm
+                        .foregroundColor(Color.black)
                 }
             }
 
@@ -423,7 +446,7 @@ struct EnterpriseAccountCard: View {
         .cornerRadius(12)
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(account.payment_status == "UNPAID" ? Color.orange.opacity(0.5) : Color.black.opacity(0.06), lineWidth: account.payment_status == "UNPAID" ? 1.5 : 1)
+                .stroke(account.status == "BLOCK" ? Color.red.opacity(0.4) : (account.payment_status == "UNPAID" ? Color.orange.opacity(0.5) : Color.black.opacity(0.06)), lineWidth: (account.status == "BLOCK" || account.payment_status == "UNPAID") ? 1.5 : 1)
         )
         .shadow(color: Color.black.opacity(0.03), radius: 6, x: 0, y: 2)
     }
@@ -454,14 +477,14 @@ struct MetricBox: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
-                .font(.system(size: 11, weight: .bold))
+                .font(.system(size: 10, weight: .bold))
                 .foregroundColor(Color.secondaryText)
             Text(value)
-                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .font(.system(size: 18, weight: .bold, design: .rounded))
                 .foregroundColor(color)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
+        .padding(10)
         .background(isAlert ? Color.orange.opacity(0.12) : Color.white)
         .cornerRadius(10)
         .shadow(color: Color.black.opacity(0.03), radius: 4, y: 1)
@@ -477,17 +500,17 @@ struct FilterChip: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 12, weight: isSelected ? .bold : .semibold))
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 12)
                 .padding(.vertical, 6)
                 .background(isSelected ? Color.brandBlue : Color.white)
-                .foregroundColor(isSelected ? .white : Color(red: 0.20, green: 0.25, blue: 0.32)) // Chữ đen/xám đậm dễ đọc
+                .foregroundColor(isSelected ? .white : Color(red: 0.20, green: 0.25, blue: 0.32))
                 .cornerRadius(20)
                 .shadow(color: Color.black.opacity(0.03), radius: 2, y: 1)
         }
     }
 }
 
-// MARK: - Màn Hình Chi Tiết
+// MARK: - Màn Hình Chi Tiết (Có trạng thái BLOCK)
 struct AccountDetailView: View {
     @Environment(\.presentationMode) var presentationMode
     @State var account: AccountModel
@@ -505,6 +528,7 @@ struct AccountDetailView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
+                        // Nút duyệt đơn nhanh
                         if account.payment_status == "UNPAID" {
                             VStack(spacing: 10) {
                                 Text("Khách hàng đang chờ duyệt thanh toán gói")
@@ -538,6 +562,25 @@ struct AccountDetailView: View {
                             .shadow(color: Color.black.opacity(0.04), radius: 4, y: 2)
                         }
 
+                        // Nút chặn nhanh tài khoản nếu cần
+                        if account.status != "BLOCK" {
+                            Button(action: {
+                                account.status = "BLOCK"
+                                saveChanges()
+                            }) {
+                                HStack {
+                                    Image(systemName: "nosign")
+                                    Text("KHÓA / CHẶN TÀI KHOẢN NÀY (BLOCK)")
+                                        .font(.system(size: 13, weight: .bold))
+                                }
+                                .foregroundColor(.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.statusBlockBg)
+                                .cornerRadius(8)
+                            }
+                        }
+
                         VStack(spacing: 14) {
                             formRow(label: "Số điện thoại") {
                                 Text(account.phone)
@@ -563,15 +606,20 @@ struct AccountDetailView: View {
                         .background(Color.white)
                         .cornerRadius(12)
 
+                        // Khu vực chọn trạng thái (Có ACTIVE, PENDING, EXPIRED, BLOCK)
                         VStack(spacing: 14) {
                             formRow(label: "Trạng thái chạy") {
                                 Picker("", selection: $account.status) {
                                     Text("ACTIVE").tag("ACTIVE")
                                     Text("PENDING").tag("PENDING")
                                     Text("EXPIRED").tag("EXPIRED")
+                                    Text("BLOCK").tag("BLOCK")
                                 }
-                                .pickerStyle(SegmentedPickerStyle())
-                                .frame(width: 200)
+                                .pickerStyle(MenuPickerStyle())
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color(red: 0.95, green: 0.96, blue: 0.98))
+                                .cornerRadius(8)
                             }
                             Divider()
                             formRow(label: "Thanh toán") {
