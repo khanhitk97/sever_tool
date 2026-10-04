@@ -10,3 +10,5 @@ targets:
       - path: App
     info:
       path: App/Info.plist
+      properties:
+        UILaunchScreen: {}
