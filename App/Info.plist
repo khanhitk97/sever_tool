@@ -14,11 +14,17 @@
     <string>1</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    
+    <!-- Khai báo màn hình khởi động để bung tràn full 100% màn hình tai thỏ / Dynamic Island -->
+    <key>UILaunchScreen</key>
+    <dict/>
+
     <key>UIBackgroundModes</key>
     <array>
         <string>audio</string>
         <string>fetch</string>
     </array>
+    
     <key>NSAppTransportSecurity</key>
     <dict>
         <key>NSAllowsArbitraryLoads</key>
