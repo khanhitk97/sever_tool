@@ -19,7 +19,7 @@ jobs:
       - name: 3. Khởi tạo dự án Xcode từ project.yml
         run: xcodegen generate
 
-      - name: 4. Build Archive (Bỏ qua ký số)
+      - name: 4. Build Archive (Bỏ qua ký số trên GitHub)
         run: |
           xcodebuild archive \
             -project SheetMonitor.xcodeproj \
@@ -31,13 +31,10 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY=""
 
-      - name: 5. Đóng gói thành file IPA
+      - name: 5. Đóng gói thành file IPA chuẩn
         run: |
           mkdir -p Payload
-          # Sao chép thư mục SheetMonitor.app vừa build vào Payload
           cp -r "$RUNNER_TEMP/SheetMonitor.xcarchive/Products/Applications/"*.app Payload/
-          
-          # Nén thành file .ipa chuẩn
           zip -r -q SheetMonitor.ipa Payload
           rm -rf Payload
 
