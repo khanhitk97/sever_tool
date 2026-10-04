@@ -46,33 +46,94 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     }
 }
 
-// MARK: - Palette Màu Chuẩn Doanh Nghiệp (Stripe / Apple Style)
+// MARK: - Bộ Giữ App Chạy Ngầm Bằng Audio (Background Keeper)
+class BackgroundAudioManager: ObservableObject {
+    static let shared = BackgroundAudioManager()
+    private var silentPlayer: AVAudioPlayer?
+
+    func activateBackgroundMode() {
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            try AVAudioSession.sharedInstance().setActive(true)
+
+            // Tạo đoạn âm thanh trống 1 giây bằng mã hóa PCM (không cần file âm thanh ngoài)
+            let silentData = createSilentAudioWav()
+            silentPlayer = try AVAudioPlayer(data: silentData)
+            silentPlayer?.numberOfLoops = -1 // Lặp lại vô tận
+            silentPlayer?.volume = 0.01      // Mức âm lượng gần như bằng 0
+            silentPlayer?.prepareToPlay()
+            silentPlayer?.play()
+        } catch {
+            print("Lỗi kích hoạt Background Audio: \(error)")
+        }
+    }
+
+    func deactivateBackgroundMode() {
+        silentPlayer?.stop()
+        silentPlayer = nil
+    }
+
+    // Tự sinh một file WAV PCM im lặng trực tiếp từ bộ nhớ
+    private func createSilentAudioWav() -> Data {
+        let sampleRate: Int32 = 44100
+        let channels: Int16 = 1
+        let bitsPerSample: Int16 = 16
+        let durationSeconds: Int = 1
+        let dataSize = Int32(durationSeconds * Int(sampleRate) * Int(channels) * Int(bitsPerSample / 8))
+        let headerSize = 44
+        let totalSize = 36 + dataSize
+
+        var data = Data()
+        data.append("RIFF".data(using: .utf8)!)
+        data.append(withUnsafeBytes(of: totalSize.littleEndian) { Data($0) })
+        data.append("WAVE".data(using: .utf8)!)
+        data.append("fmt ".data(using: .utf8)!)
+        
+        let subchunk1Size: Int32 = 16
+        let audioFormat: Int16 = 1
+        let byteRate = sampleRate * Int32(channels) * Int32(bitsPerSample / 8)
+        let blockAlign = channels * (bitsPerSample / 8)
+
+        data.append(withUnsafeBytes(of: subchunk1Size.littleEndian) { Data($0) })
+        data.append(withUnsafeBytes(of: audioFormat.littleEndian) { Data($0) })
+        data.append(withUnsafeBytes(of: channels.littleEndian) { Data($0) })
+        data.append(withUnsafeBytes(of: sampleRate.littleEndian) { Data($0) })
+        data.append(withUnsafeBytes(of: byteRate.littleEndian) { Data($0) })
+        data.append(withUnsafeBytes(of: blockAlign.littleEndian) { Data($0) })
+        data.append(withUnsafeBytes(of: bitsPerSample.littleEndian) { Data($0) })
+        data.append("data".data(using: .utf8)!)
+        data.append(withUnsafeBytes(of: dataSize.littleEndian) { Data($0) })
+
+        // Ghi các mẫu 0 (im lặng)
+        data.append(contentsOf: [UInt8](repeating: 0, count: Int(dataSize)))
+        return data
+    }
+}
+
+// MARK: - Palette Màu Chuẩn Doanh Nghiệp
 extension Color {
-    static let appBackground = Color(red: 0.965, green: 0.973, blue: 0.984) // Xám băng mát mắt
+    static let appBackground = Color(red: 0.96, green: 0.97, blue: 0.98)
     static let cardBackground = Color.white
-    static let primaryText = Color(red: 0.06, green: 0.09, blue: 0.16)
-    static let secondaryText = Color(red: 0.39, green: 0.45, blue: 0.55)
-    static let brandBlue = Color(red: 0.14, green: 0.43, blue: 0.97)
+    static let primaryText = Color(red: 0.08, green: 0.11, blue: 0.18)
+    static let secondaryText = Color(red: 0.45, green: 0.50, blue: 0.60)
+    static let brandBlue = Color(red: 0.12, green: 0.45, blue: 0.95)
     
-    // Status colors
     static let statusPaidBg = Color(red: 0.88, green: 0.97, blue: 0.92)
     static let statusPaidText = Color(red: 0.09, green: 0.55, blue: 0.31)
-    
     static let statusUnpaidBg = Color(red: 0.99, green: 0.94, blue: 0.86)
-    static let statusUnpaidText = Color(red: 0.80, green: 0.42, blue: 0.05)
-    
+    static let statusUnpaidText = Color(red: 0.82, green: 0.42, blue: 0.05)
     static let statusActiveBg = Color(red: 0.91, green: 0.94, blue: 1.0)
     static let statusActiveText = Color(red: 0.14, green: 0.38, blue: 0.86)
 }
 
-// MARK: - Giao Diện Chính
+// MARK: - Màn Hình Chính
 struct ContentView: View {
     let webAppUrl = "https://script.google.com/macros/s/AKfycbz6gvfUZuyuO8-BW8tRVkoTFGPvZNu_eJPz1JtI9AuVnUQd2NLKcMCCQ4wBckVPPg5V/exec"
 
     @State private var accounts: [AccountModel] = []
     @State private var selectedAccount: AccountModel?
     @State private var searchText: String = ""
-    @State private var selectedFilter: String = "ALL" // ALL, UNPAID, ACTIVE
+    @State private var selectedFilter: String = "ALL"
     @State private var isMonitoring: Bool = true
     @State private var checkInterval: Double = 5
     @State private var statusText: String = "Sẵn sàng"
@@ -80,7 +141,6 @@ struct ContentView: View {
     @State private var previousState: [String: String] = [:]
     @State private var timer: Timer?
 
-    // Bộ lọc dữ liệu theo thanh tìm kiếm và tag
     var filteredAccounts: [AccountModel] {
         accounts.filter { acc in
             let matchSearch = searchText.isEmpty || acc.phone.contains(searchText) || acc.note.localizedCaseInsensitiveContains(searchText)
@@ -100,36 +160,36 @@ struct ContentView: View {
                 Color.appBackground.ignoresSafeArea()
 
                 VStack(spacing: 0) {
-                    // 1. THANH CHỈ SỐ NHANH (KPI STATS)
                     kpiStatsView
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
-                        .padding(.bottom, 12)
-
-                    // 2. THANH TÌM KIẾM & BỘ LỌC CHIP
-                    searchAndFilterSection
-                        .padding(.horizontal, 16)
                         .padding(.bottom, 10)
 
-                    // 3. DANH SÁCH THẺ (CARDS LIST)
-                    ScrollView {
+                    searchAndFilterSection
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+
+                    ScrollView(.vertical, showsIndicators: true) {
                         LazyVStack(spacing: 12) {
                             ForEach(filteredAccounts) { acc in
                                 EnterpriseAccountCard(account: acc)
+                                    .contentShape(Rectangle())
                                     .onTapGesture {
                                         selectedAccount = acc
                                     }
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 30)
+                        .frame(maxWidth: .infinity)
                     }
                     .refreshable {
                         fetchData()
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .navigationTitle("Trung Tâm Bản Quyền")
+            .navigationTitle("Quản Lý Bản Quyền")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -160,19 +220,18 @@ struct ContentView: View {
                 startPolling()
             }
         }
-        .navigationViewStyle(StackNavigationViewStyle()) // Co giãn full màn hình iPad / iPhone
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 
-    // KPI Metrics Bar
     var kpiStatsView: some View {
         HStack(spacing: 10) {
             MetricBox(title: "TỔNG MÁY", value: "\(accounts.count)", color: .primaryText)
             MetricBox(title: "ĐANG CHẠY", value: "\(accounts.filter { $0.status == "ACTIVE" }.count)", color: .statusPaidText)
             MetricBox(title: "CHỜ DUYỆT", value: "\(accounts.filter { $0.payment_status == "UNPAID" }.count)", color: .statusUnpaidText, isAlert: accounts.contains { $0.payment_status == "UNPAID" })
         }
+        .frame(maxWidth: .infinity)
     }
 
-    // Search & Segmented Filter
     var searchAndFilterSection: some View {
         VStack(spacing: 8) {
             HStack {
@@ -188,31 +247,32 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, 8)
+            .padding(.vertical, 9)
+            .frame(maxWidth: .infinity)
             .background(Color.white)
             .cornerRadius(10)
             .shadow(color: Color.black.opacity(0.03), radius: 3, y: 1)
 
-            // Chips
             HStack(spacing: 8) {
                 FilterChip(title: "Tất cả (\(accounts.count))", isSelected: selectedFilter == "ALL") { selectedFilter = "ALL" }
                 FilterChip(title: "Cần duyệt (\(accounts.filter { $0.payment_status == "UNPAID" }.count))", isSelected: selectedFilter == "UNPAID") { selectedFilter = "UNPAID" }
-                FilterChip(title: "Đang Active (\(accounts.filter { $0.status == "ACTIVE" }.count))", isSelected: selectedFilter == "ACTIVE") { selectedFilter = "ACTIVE" }
+                FilterChip(title: "Active (\(accounts.filter { $0.status == "ACTIVE" }.count))", isSelected: selectedFilter == "ACTIVE") { selectedFilter = "ACTIVE" }
                 Spacer()
             }
+            .frame(maxWidth: .infinity)
         }
+        .frame(maxWidth: .infinity)
     }
 
     func initAudioAndNotification() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound, .badge]) { _, _ in }
-        do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.duckOthers])
-            try AVAudioSession.sharedInstance().setActive(true)
-        } catch {}
     }
 
     func startPolling() {
         stopPolling()
+        // Kích hoạt phát ngầm để iOS không bao giờ đóng băng app
+        BackgroundAudioManager.shared.activateBackgroundMode()
+        
         fetchData()
         timer = Timer.scheduledTimer(withTimeInterval: checkInterval, repeats: true) { _ in
             fetchData()
@@ -220,6 +280,7 @@ struct ContentView: View {
     }
 
     func stopPolling() {
+        BackgroundAudioManager.shared.deactivateBackgroundMode()
         timer?.invalidate()
         timer = nil
         statusText = "Đã tạm dừng"
@@ -240,7 +301,7 @@ struct ContentView: View {
                 if let res = try? JSONDecoder().decode(SheetResponse.self, from: data), res.success, let list = res.data {
                     self.detectNewUnpaidOrders(newList: list)
                     self.accounts = list
-                    self.statusText = "Đồng bộ lúc: \(Date().formatted(date: .omitted, time: .standard))"
+                    self.statusText = "Đồng bộ: \(Date().formatted(date: .omitted, time: .standard))"
                 }
             }
         }.resume()
@@ -271,17 +332,17 @@ struct ContentView: View {
         let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
 
+        // Rung và phát chuông cảnh báo
         AudioServicesPlayAlertSound(1005)
     }
 }
 
-// MARK: - Component Thẻ Tài Khoản Nền Trắng Nổi Bật (Enterprise Card)
+// MARK: - Components
 struct EnterpriseAccountCard: View {
     let account: AccountModel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            // Hàng 1: SĐT & Các Tag trạng thái
             HStack(alignment: .center) {
                 Text(account.phone)
                     .font(.system(size: 17, weight: .bold, design: .monospaced))
@@ -289,24 +350,21 @@ struct EnterpriseAccountCard: View {
 
                 Spacer()
 
-                // Tag Thanh Toán
                 StatusBadge(
                     text: account.payment_status,
                     bgColor: account.payment_status == "PAID" ? Color.statusPaidBg : Color.statusUnpaidBg,
                     textColor: account.payment_status == "PAID" ? Color.statusPaidText : Color.statusUnpaidText
                 )
 
-                // Tag Trạng Thái
                 StatusBadge(
                     text: account.status,
-                    bgColor: account.status == "ACTIVE" ? Color.statusActiveBg : Color(red: 0.95, green: 0.95, blue: 0.96),
+                    bgColor: account.status == "ACTIVE" ? Color.statusActiveBg : Color(red: 0.94, green: 0.95, blue: 0.96),
                     textColor: account.status == "ACTIVE" ? Color.statusActiveText : Color.secondaryText
                 )
             }
 
             Divider()
 
-            // Hàng 2: Hạn dùng & Số tiền
             HStack {
                 Label {
                     Text(account.expire_at.isEmpty ? "Vô thời hạn" : account.expire_at)
@@ -327,7 +385,6 @@ struct EnterpriseAccountCard: View {
                 }
             }
 
-            // Hàng 3: Ghi chú gói (nếu có)
             if !account.note.isEmpty {
                 HStack(alignment: .top, spacing: 4) {
                     Image(systemName: "info.circle")
@@ -341,6 +398,7 @@ struct EnterpriseAccountCard: View {
             }
         }
         .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.cardBackground)
         .cornerRadius(12)
         .overlay(
@@ -351,7 +409,6 @@ struct EnterpriseAccountCard: View {
     }
 }
 
-// MARK: - Subcomponents
 struct StatusBadge: View {
     let text: String
     let bgColor: Color
@@ -385,7 +442,7 @@ struct MetricBox: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(isAlert ? Color.orange.opacity(0.1) : Color.white)
+        .background(isAlert ? Color.orange.opacity(0.12) : Color.white)
         .cornerRadius(10)
         .shadow(color: Color.black.opacity(0.02), radius: 4, y: 1)
     }
@@ -410,7 +467,6 @@ struct FilterChip: View {
     }
 }
 
-// MARK: - Màn Hình Chi Tiết / Duyệt Đơn
 struct AccountDetailView: View {
     @Environment(\.presentationMode) var presentationMode
     @State var account: AccountModel
@@ -428,7 +484,6 @@ struct AccountDetailView: View {
 
                 ScrollView {
                     VStack(spacing: 16) {
-                        // Nút Kích Hoạt Nhanh Nổi Bật
                         if account.payment_status == "UNPAID" {
                             VStack(spacing: 10) {
                                 Text("Khách hàng đang chờ duyệt thanh toán gói")
@@ -448,6 +503,7 @@ struct AccountDetailView: View {
                                         Spacer()
                                     }
                                     .padding(.vertical, 14)
+                                    .frame(maxWidth: .infinity)
                                     .background(Color.statusPaidText)
                                     .foregroundColor(.white)
                                     .cornerRadius(10)
@@ -455,12 +511,12 @@ struct AccountDetailView: View {
                                 .disabled(isSaving)
                             }
                             .padding()
+                            .frame(maxWidth: .infinity)
                             .background(Color.white)
                             .cornerRadius(12)
                             .shadow(color: Color.black.opacity(0.03), radius: 4, y: 2)
                         }
 
-                        // Form Thông tin thẻ trắng
                         VStack(spacing: 14) {
                             formRow(label: "Số điện thoại") {
                                 Text(account.phone)
@@ -480,10 +536,10 @@ struct AccountDetailView: View {
                             }
                         }
                         .padding()
+                        .frame(maxWidth: .infinity)
                         .background(Color.white)
                         .cornerRadius(12)
 
-                        // Form Trạng Thái & Hạn
                         VStack(spacing: 14) {
                             formRow(label: "Trạng thái chạy") {
                                 Picker("", selection: $account.status) {
@@ -515,10 +571,10 @@ struct AccountDetailView: View {
                             }
                         }
                         .padding()
+                        .frame(maxWidth: .infinity)
                         .background(Color.white)
                         .cornerRadius(12)
 
-                        // Số tiền & Ghi chú
                         VStack(spacing: 14) {
                             formRow(label: "Số tiền (VNĐ)") {
                                 TextField("0", text: $account.amount)
@@ -539,10 +595,12 @@ struct AccountDetailView: View {
                             }
                         }
                         .padding()
+                        .frame(maxWidth: .infinity)
                         .background(Color.white)
                         .cornerRadius(12)
                     }
                     .padding(16)
+                    .frame(maxWidth: .infinity)
                 }
             }
             .navigationTitle("Chi Tiết Tài Khoản")
@@ -557,6 +615,7 @@ struct AccountDetailView: View {
                 })
             }
         }
+        .navigationViewStyle(StackNavigationViewStyle())
     }
 
     func formRow<Content: View>(label: String, @ViewBuilder content: () -> Content) -> some View {
