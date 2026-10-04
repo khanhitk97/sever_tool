@@ -1,0 +1,12 @@
+name: SheetMonitor
+options:
+  bundleIdPrefix: com.app
+targets:
+  SheetMonitor:
+    type: application
+    platform: iOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: App
+    info:
+      path: App/Info.plist
