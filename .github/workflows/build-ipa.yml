@@ -1,0 +1,76 @@
+name: Build and Export iOS IPA
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch: # Cho phép bấm chạy thủ công từ giao diện GitHub Actions
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout mã nguồn
+        uses: actions/checkout@v4
+
+      - name: Cài đặt phiên bản Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode.app
+
+      # Bước xử lý nếu bạn có chứng chỉ ký (Certificate & Provisioning Profile)
+      - name: Cài đặt chứng chỉ Apple (Tùy chọn)
+        if: env.BUILD_CERTIFICATE_BASE64 != ''
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+          P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+          BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH=$RUNNER_TEMP/build_certificate.p12
+          PP_PATH=$RUNNER_TEMP/build_pp.mobileprovision
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+
+          echo -n "$BUILD_CERTIFICATE_BASE64" | base64 --decode -o $CERTIFICATE_PATH
+          echo -n "$BUILD_PROVISION_PROFILE_BASE64" | base64 --decode -o $PP_PATH
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+          security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          security import $CERTIFICATE_PATH -P "$P12_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
+          security list-keychain -d user -s $KEYCHAIN_PATH
+
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PP_PATH ~/Library/MobileDevice/Provisioning\ Profiles/
+
+      - name: Build ứng dụng (Xcodebuild)
+        run: |
+          # Thay thế TênProject và TênScheme tương ứng với dự án của bạn
+          xcodebuild archive \
+            -project "MyApp.xcodeproj" \
+            -scheme "MyApp" \
+            -archivePath "$RUNNER_TEMP/MyApp.xcarchive" \
+            -configuration Release \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Đóng gói thành file .IPA
+        run: |
+          # Tạo cấu trúc Payload chuẩn cho file IPA
+          mkdir -p Payload
+          cp -r "$RUNNER_TEMP/MyApp.xcarchive/Products/Applications/MyApp.app" Payload/
+          zip -r -q MyApp.ipa Payload/
+          rm -rf Payload
+
+      - name: Lưu trữ IPA làm Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MyApp-IPA
+          path: MyApp.ipa
+
+      - name: Đẩy file IPA lên GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/') # Tự động tạo release khi gắn tag (vd: v1.0.0)
+        with:
+          files: MyApp.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
